@@ -185,11 +185,11 @@ export const BeforeAfterViewer: React.FC<BeforeAfterViewerProps> = ({ item, onDo
             </div>
 
             {/* Corner Labels */}
-            <span className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded bg-black/75 border border-white/10 text-[11px] font-mono text-zinc-100 pointer-events-none">
+            <span className="absolute top-2.5 left-2.5 max-w-[44%] truncate px-2 py-0.5 rounded bg-black/75 border border-white/10 text-[10px] sm:text-[11px] font-mono text-zinc-100 pointer-events-none">
               Original · {formatBytes(item.originalSize)}
             </span>
-            <span className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded bg-black/75 border border-cyan-500/30 text-[11px] font-mono text-cyan-200 pointer-events-none">
-              {item.status === 'completed' ? 'Output' : 'Live Preview'} ·{' '}
+            <span className="absolute top-2.5 right-2.5 max-w-[44%] truncate px-2 py-0.5 rounded bg-black/75 border border-cyan-500/30 text-[10px] sm:text-[11px] font-mono text-cyan-200 pointer-events-none">
+              {item.status === 'completed' ? 'Output' : 'Preview'} ·{' '}
               {activeAfterSize !== null ? formatBytes(activeAfterSize) : '...'}
             </span>
           </div>
