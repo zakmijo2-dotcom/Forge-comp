@@ -1,0 +1,6 @@
+{
+  "name": "MediaForge Local",
+  "description": "100% offline, client-side media compression and format conversion studio for video, image, and audio files.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
