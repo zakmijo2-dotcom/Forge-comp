@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 @layer base {
   :root {
@@ -8,8 +9,6 @@
 
   body {
     font-family: var(--font-sans);
-    background-color: #09090b;
-    color: #f4f4f5;
   }
 
   code, pre, .font-mono {
@@ -18,14 +17,18 @@
   }
 }
 
-/* Custom sleek range slider for dark cyber-industrial aesthetic */
+/* Custom sleek range slider for light & dark modes */
 input[type="range"].studio-slider {
   -webkit-appearance: none;
   appearance: none;
   height: 6px;
   border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(24, 24, 27, 0.14);
   outline: none;
+}
+
+.dark input[type="range"].studio-slider {
+  background: rgba(255, 255, 255, 0.1);
 }
 
 input[type="range"].studio-slider::-webkit-slider-thumb {
@@ -34,24 +37,33 @@ input[type="range"].studio-slider::-webkit-slider-thumb {
   width: 16px;
   height: 16px;
   border-radius: 9999px;
-  background: #22d3ee;
-  border: 2px solid #09090b;
+  background: #0891b2;
+  border: 2px solid #ffffff;
   cursor: pointer;
   transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.15s ease;
 }
 
+.dark input[type="range"].studio-slider::-webkit-slider-thumb {
+  background: #22d3ee;
+  border-color: #09090b;
+}
+
 input[type="range"].studio-slider::-webkit-slider-thumb:hover {
   transform: scale(1.15);
-  background: #67e8f9;
 }
 
 input[type="range"].studio-slider::-moz-range-thumb {
   width: 16px;
   height: 16px;
   border-radius: 9999px;
-  background: #22d3ee;
-  border: 2px solid #09090b;
+  background: #0891b2;
+  border: 2px solid #ffffff;
   cursor: pointer;
+}
+
+.dark input[type="range"].studio-slider::-moz-range-thumb {
+  background: #22d3ee;
+  border-color: #09090b;
 }
 
 /* Subtle custom scrollbar */
@@ -65,22 +77,39 @@ input[type="range"].studio-slider::-moz-range-thumb {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(24, 24, 27, 0.18);
   border-radius: 9999px;
 }
 
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+}
+
 ::-webkit-scrollbar-thumb:hover {
+  background: rgba(24, 24, 27, 0.3);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.22);
 }
 
 /* Transparency checkerboard for Before/After viewer */
 .checkerboard-bg {
+  background-color: #f4f4f5;
+  background-image:
+    linear-gradient(45deg, rgba(24, 24, 27, 0.06) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(24, 24, 27, 0.06) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(24, 24, 27, 0.06) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(24, 24, 27, 0.06) 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+
+.dark .checkerboard-bg {
   background-color: #121216;
   background-image:
     linear-gradient(45deg, rgba(255, 255, 255, 0.04) 25%, transparent 25%),
     linear-gradient(-45deg, rgba(255, 255, 255, 0.04) 25%, transparent 25%),
     linear-gradient(45deg, transparent 75%, rgba(255, 255, 255, 0.04) 75%),
     linear-gradient(-45deg, transparent 75%, rgba(255, 255, 255, 0.04) 75%);
-  background-size: 16px 16px;
-  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
 }

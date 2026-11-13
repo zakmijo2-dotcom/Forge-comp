@@ -13,6 +13,7 @@ import {
 import { buildAudioFfmpegArgs, buildVideoFfmpegArgs } from './ffmpegArgs';
 import { applyPresetToMediaSettings } from './presets';
 import { encodeFloatChannelsToWav, encodeFramesToGif, encodeRgbaToBmp } from './binaryEncoders';
+import { resolveEffectiveTheme } from './themeUtils';
 
 test('detectMediaKind classifies images, videos, and audio accurately', () => {
   assert.equal(detectMediaKind({ name: 'photo.JPG', type: 'image/jpeg' }), 'image');
@@ -120,4 +121,11 @@ test('binaryEncoders produce valid BMP, WAV, and GIF89a headers', () => {
   const gif = encodeFramesToGif([rgba, rgba], 4, 4, 100);
   assert.equal(String.fromCharCode(gif[0], gif[1], gif[2], gif[3], gif[4], gif[5]), 'GIF89a');
   assert.equal(gif[gif.length - 1], 0x3b);
+});
+
+test('resolveEffectiveTheme follows system preference when syncToSystem is enabled', () => {
+  assert.equal(resolveEffectiveTheme({ syncToSystem: true, manualTheme: 'dark' }, false), 'light');
+  assert.equal(resolveEffectiveTheme({ syncToSystem: true, manualTheme: 'light' }, true), 'dark');
+  assert.equal(resolveEffectiveTheme({ syncToSystem: false, manualTheme: 'dark' }, false), 'dark');
+  assert.equal(resolveEffectiveTheme({ syncToSystem: false, manualTheme: 'light' }, true), 'light');
 });

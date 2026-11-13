@@ -128,7 +128,6 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
 
   const updateVideo = (patch: Partial<MediaSettings['video']>) => {
     const updatedVideo = { ...settings.video, ...patch };
-    // Auto-select compatible default codec when switching between MP4/MKV/MOV and WebM
     if (patch.format === 'webm' && (updatedVideo.codec === 'h264' || updatedVideo.codec === 'h265')) {
       updatedVideo.codec = 'vp9';
     } else if (
@@ -160,12 +159,19 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
     }
   };
 
+  const selectClass =
+    'w-full px-3 py-2 text-xs rounded-lg border border-zinc-300 dark:border-white/10 bg-zinc-50 dark:bg-[#09090b] text-zinc-900 dark:text-zinc-100 disabled:opacity-45 focus:outline-none focus:border-cyan-500';
+  const inputClass =
+    'w-full px-3 py-2 text-xs font-mono rounded-lg border border-zinc-300 dark:border-white/10 bg-zinc-50 dark:bg-[#09090b] text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500';
+
   const renderAudioControls = (audioCfg: AudioSettings, isExtractFromVideo: boolean) => {
     const isLosslessCodec = audioCfg.format === 'wav' || audioCfg.format === 'flac';
     return (
       <div className="space-y-4">
         <div>
-          <span className="block text-xs font-medium text-zinc-300 mb-2">Output Audio Format</span>
+          <span className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-2">
+            Output Audio Format
+          </span>
           <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
             {AUDIO_FORMATS.map((fmt) => (
               <button
@@ -174,8 +180,8 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                 onClick={() => updateAudioSettings({ format: fmt.value }, isExtractFromVideo)}
                 className={`px-2.5 py-2 text-xs font-medium rounded-lg border transition-colors cursor-pointer whitespace-nowrap ${
                   audioCfg.format === fmt.value
-                    ? 'border-cyan-400 bg-cyan-500/15 text-cyan-200'
-                    : 'border-white/[0.08] bg-white/[0.03] text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.06]'
+                    ? 'border-cyan-500 bg-cyan-500/15 text-cyan-800 dark:text-cyan-200'
+                    : 'border-zinc-200 dark:border-white/[0.08] bg-zinc-50 dark:bg-white/[0.03] text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
                 }`}
               >
                 {fmt.label}
@@ -188,7 +194,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
           <div>
             <label
               htmlFor={`audio-bitrate-${item.id}`}
-              className="block text-xs font-medium text-zinc-300 mb-1.5"
+              className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1.5"
             >
               Bitrate
             </label>
@@ -199,7 +205,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
               onChange={(e) =>
                 updateAudioSettings({ bitrate: Number(e.target.value) as AudioBitrate }, isExtractFromVideo)
               }
-              className="w-full px-3 py-2 text-xs rounded-lg border border-white/10 bg-[#09090b] text-zinc-100 disabled:opacity-45 focus:outline-none focus:border-cyan-400"
+              className={selectClass}
             >
               {AUDIO_BITRATES.map((br) => (
                 <option key={br} value={br}>
@@ -212,7 +218,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
           <div>
             <label
               htmlFor={`audio-rate-${item.id}`}
-              className="block text-xs font-medium text-zinc-300 mb-1.5"
+              className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1.5"
             >
               Sample Rate
             </label>
@@ -225,7 +231,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                   isExtractFromVideo
                 )
               }
-              className="w-full px-3 py-2 text-xs rounded-lg border border-white/10 bg-[#09090b] text-zinc-100 focus:outline-none focus:border-cyan-400"
+              className={selectClass}
             >
               {AUDIO_SAMPLE_RATES.map((sr) => (
                 <option key={sr.value} value={sr.value}>
@@ -236,7 +242,9 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
           </div>
 
           <div>
-            <span className="block text-xs font-medium text-zinc-300 mb-1.5">Channels</span>
+            <span className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+              Channels
+            </span>
             <div className="grid grid-cols-2 gap-1.5">
               {(['stereo', 'mono'] as const).map((ch) => (
                 <button
@@ -245,8 +253,8 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                   onClick={() => updateAudioSettings({ channels: ch }, isExtractFromVideo)}
                   className={`px-2.5 py-2 text-xs font-medium rounded-lg border capitalize transition-colors cursor-pointer ${
                     audioCfg.channels === ch
-                      ? 'border-cyan-400 bg-cyan-500/15 text-cyan-200'
-                      : 'border-white/[0.08] bg-white/[0.03] text-zinc-400 hover:text-zinc-200'
+                      ? 'border-cyan-500 bg-cyan-500/15 text-cyan-800 dark:text-cyan-200'
+                      : 'border-zinc-200 dark:border-white/[0.08] bg-zinc-50 dark:bg-white/[0.03] text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
                   }`}
                 >
                   {ch}
@@ -260,7 +268,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
           <div>
             <label
               htmlFor={`trim-start-${item.id}`}
-              className="block text-xs font-medium text-zinc-300 mb-1.5"
+              className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1.5"
             >
               Trim Start (MM:SS)
             </label>
@@ -270,14 +278,14 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
               placeholder="00:00"
               value={audioCfg.trimStart}
               onChange={(e) => updateAudioSettings({ trimStart: e.target.value }, isExtractFromVideo)}
-              className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-white/10 bg-[#09090b] text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-cyan-400"
+              className={inputClass}
             />
           </div>
 
           <div>
             <label
               htmlFor={`trim-end-${item.id}`}
-              className="block text-xs font-medium text-zinc-300 mb-1.5"
+              className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1.5"
             >
               Trim End (MM:SS)
             </label>
@@ -287,7 +295,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
               placeholder="Full duration"
               value={audioCfg.trimEnd}
               onChange={(e) => updateAudioSettings({ trimEnd: e.target.value }, isExtractFromVideo)}
-              className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-white/10 bg-[#09090b] text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-cyan-400"
+              className={inputClass}
             />
           </div>
         </div>
@@ -322,11 +330,11 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
         ];
 
   return (
-    <div className="rounded-xl border border-white/[0.08] bg-[#121216] overflow-hidden">
+    <div className="rounded-xl border border-zinc-200 dark:border-white/[0.08] bg-white dark:bg-[#121216] overflow-hidden">
       {/* Smart One-Click Preset Bar */}
-      <div className="px-4 py-3 border-b border-white/[0.08] bg-white/[0.02]">
-        <div className="flex items-center gap-1.5 text-xs font-medium text-zinc-300 mb-2">
-          <Zap className="w-3.5 h-3.5 text-cyan-400" />
+      <div className="px-4 py-3 border-b border-zinc-200 dark:border-white/[0.08] bg-zinc-50 dark:bg-white/[0.02]">
+        <div className="flex items-center gap-1.5 text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-2">
+          <Zap className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
           <span>Smart One-Click Presets</span>
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -336,7 +344,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
               type="button"
               title={preset.shortDesc}
               onClick={() => onApplyPreset(item.id, preset.id)}
-              className="px-2.5 py-1.5 text-xs font-medium rounded-lg border border-white/10 bg-white/[0.04] text-zinc-200 hover:border-cyan-400/50 hover:bg-cyan-500/10 hover:text-cyan-100 transition-colors cursor-pointer whitespace-nowrap"
+              className="px-2.5 py-1.5 text-xs font-medium rounded-lg border border-zinc-200 dark:border-white/10 bg-white dark:bg-white/[0.04] text-zinc-700 dark:text-zinc-200 hover:border-cyan-500/60 hover:bg-cyan-500/10 hover:text-cyan-800 dark:hover:text-cyan-100 transition-colors cursor-pointer whitespace-nowrap"
             >
               {preset.label}
             </button>
@@ -345,16 +353,16 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
       </div>
 
       {/* Inspector Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-white/[0.08]">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-zinc-200 dark:border-white/[0.08]">
         <div className="flex items-center gap-2 min-w-0">
           {kind === 'image' ? (
-            <ImageIcon className="w-4 h-4 text-cyan-400 shrink-0" />
+            <ImageIcon className="w-4 h-4 text-cyan-600 dark:text-cyan-400 shrink-0" />
           ) : kind === 'video' ? (
-            <Film className="w-4 h-4 text-cyan-400 shrink-0" />
+            <Film className="w-4 h-4 text-cyan-600 dark:text-cyan-400 shrink-0" />
           ) : (
-            <Music className="w-4 h-4 text-cyan-400 shrink-0" />
+            <Music className="w-4 h-4 text-cyan-600 dark:text-cyan-400 shrink-0" />
           )}
-          <h2 className="text-sm font-semibold text-zinc-100 truncate">
+          <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate">
             {item.name}
           </h2>
         </div>
@@ -364,9 +372,9 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
             <button
               type="button"
               onClick={() => onApplyToAllSimilar(item)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-white/10 bg-white/[0.04] text-zinc-200 hover:bg-white/[0.08] transition-colors cursor-pointer whitespace-nowrap"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-zinc-200 dark:border-white/10 bg-zinc-50 dark:bg-white/[0.04] text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-white/[0.08] transition-colors cursor-pointer whitespace-nowrap"
             >
-              <CopyCheck className="w-3.5 h-3.5 text-cyan-400" />
+              <CopyCheck className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
               Apply to All {kind === 'image' ? 'Images' : kind === 'video' ? 'Videos' : 'Audio'} ({similarCount})
             </button>
           )}
@@ -375,7 +383,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
             type="button"
             disabled={isBatchRunning || item.status === 'processing'}
             onClick={() => onCompressSingle(item.id)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-cyan-500 text-zinc-950 hover:bg-cyan-400 disabled:opacity-40 transition-colors cursor-pointer whitespace-nowrap"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-cyan-600 dark:bg-cyan-500 text-white dark:text-zinc-950 hover:bg-cyan-500 dark:hover:bg-cyan-400 disabled:opacity-40 transition-colors cursor-pointer whitespace-nowrap"
           >
             <Play className="w-3 h-3 fill-current" />
             Compress Selected
@@ -388,7 +396,9 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
         {kind === 'image' && (
           <>
             <div>
-              <span className="block text-xs font-medium text-zinc-300 mb-2">Output Format</span>
+              <span className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-2">
+                Output Format
+              </span>
               <div className="grid grid-cols-5 gap-1.5">
                 {IMAGE_FORMATS.map((fmt) => (
                   <button
@@ -397,8 +407,8 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                     onClick={() => updateImage({ format: fmt.value })}
                     className={`px-2.5 py-2 text-xs font-medium rounded-lg border transition-colors cursor-pointer ${
                       settings.image.format === fmt.value
-                        ? 'border-cyan-400 bg-cyan-500/15 text-cyan-200'
-                        : 'border-white/[0.08] bg-white/[0.03] text-zinc-400 hover:text-zinc-200'
+                        ? 'border-cyan-500 bg-cyan-500/15 text-cyan-800 dark:text-cyan-200'
+                        : 'border-zinc-200 dark:border-white/[0.08] bg-zinc-50 dark:bg-white/[0.03] text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
                     }`}
                   >
                     {fmt.label}
@@ -409,15 +419,15 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
 
             <div>
               <div className="flex items-center justify-between gap-2 mb-2">
-                <label htmlFor={`img-quality-${item.id}`} className="text-xs font-medium text-zinc-300">
+                <label htmlFor={`img-quality-${item.id}`} className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
                   Quality / Compression
                 </label>
                 <div className="flex items-center gap-2 text-xs font-mono tabular-nums">
-                  <span className="text-cyan-300 font-semibold">{settings.image.quality}%</span>
+                  <span className="text-cyan-700 dark:text-cyan-300 font-semibold">{settings.image.quality}%</span>
                   {estimatedImgBytes !== null && (
                     <>
-                      <span aria-hidden="true" className="text-zinc-600">·</span>
-                      <span className="text-zinc-400">
+                      <span aria-hidden="true" className="text-zinc-400 dark:text-zinc-600">·</span>
+                      <span className="text-zinc-500 dark:text-zinc-400">
                         Est. ~{formatBytes(estimatedImgBytes)}
                       </span>
                     </>
@@ -443,11 +453,11 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
 
             <div>
               <div className="flex items-center justify-between gap-2 mb-1.5">
-                <label htmlFor={`img-resize-${item.id}`} className="text-xs font-medium text-zinc-300">
+                <label htmlFor={`img-resize-${item.id}`} className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
                   Resize & Scaling (Aspect Ratio Locked)
                 </label>
                 {targetImgDims && (
-                  <span className="text-[11px] font-mono text-zinc-400 tabular-nums">
+                  <span className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 tabular-nums">
                     {targetImgDims.width} × {targetImgDims.height}px
                   </span>
                 )}
@@ -456,7 +466,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                 id={`img-resize-${item.id}`}
                 value={settings.image.resize}
                 onChange={(e) => updateImage({ resize: e.target.value as ImageResizeMode })}
-                className="w-full px-3 py-2 text-xs rounded-lg border border-white/10 bg-[#09090b] text-zinc-100 focus:outline-none focus:border-cyan-400"
+                className={selectClass}
               >
                 {IMAGE_RESIZES.map((r) => (
                   <option key={r.value} value={r.value}>
@@ -466,28 +476,28 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
               </select>
             </div>
 
-            <div className="space-y-2.5 pt-1 border-t border-white/[0.06]">
-              <span className="block text-xs font-medium text-zinc-300">
+            <div className="space-y-2.5 pt-1 border-t border-zinc-200 dark:border-white/[0.06]">
+              <span className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
                 Privacy & Pixel Optimization
               </span>
 
               <label className="flex items-center justify-between gap-3 py-1 cursor-pointer">
-                <span className="text-xs text-zinc-300">Strip EXIF / GPS Location Metadata</span>
+                <span className="text-xs text-zinc-700 dark:text-zinc-300">Strip EXIF / GPS Location Metadata</span>
                 <input
                   type="checkbox"
                   checked={settings.image.stripExif}
                   onChange={(e) => updateImage({ stripExif: e.target.checked })}
-                  className="w-4 h-4 accent-cyan-400 rounded cursor-pointer"
+                  className="w-4 h-4 accent-cyan-600 dark:accent-cyan-400 rounded cursor-pointer"
                 />
               </label>
 
               <label className="flex items-center justify-between gap-3 py-1 cursor-pointer">
-                <span className="text-xs text-zinc-300">Grayscale Luminance Filter</span>
+                <span className="text-xs text-zinc-700 dark:text-zinc-300">Grayscale Luminance Filter</span>
                 <input
                   type="checkbox"
                   checked={settings.image.grayscale}
                   onChange={(e) => updateImage({ grayscale: e.target.checked })}
-                  className="w-4 h-4 accent-cyan-400 rounded cursor-pointer"
+                  className="w-4 h-4 accent-cyan-600 dark:accent-cyan-400 rounded cursor-pointer"
                 />
               </label>
 
@@ -498,9 +508,9 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                     checked={settings.image.flattenAlpha || settings.image.format === 'jpg' || settings.image.format === 'bmp'}
                     disabled={settings.image.format === 'jpg' || settings.image.format === 'bmp'}
                     onChange={(e) => updateImage({ flattenAlpha: e.target.checked })}
-                    className="w-4 h-4 accent-cyan-400 rounded cursor-pointer"
+                    className="w-4 h-4 accent-cyan-600 dark:accent-cyan-400 rounded cursor-pointer"
                   />
-                  <span className="text-xs text-zinc-300">Remove Alpha / Flatten Background</span>
+                  <span className="text-xs text-zinc-700 dark:text-zinc-300">Remove Alpha / Flatten Background</span>
                 </label>
 
                 <div className="flex items-center gap-2">
@@ -509,9 +519,9 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                     aria-label="Alpha flatten background color"
                     value={settings.image.flattenColor}
                     onChange={(e) => updateImage({ flattenColor: e.target.value })}
-                    className="w-7 h-7 rounded border border-white/15 bg-transparent cursor-pointer"
+                    className="w-7 h-7 rounded border border-zinc-300 dark:border-white/15 bg-transparent cursor-pointer"
                   />
-                  <span className="text-[11px] font-mono text-zinc-400 uppercase">
+                  <span className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 uppercase">
                     {settings.image.flattenColor}
                   </span>
                 </div>
@@ -522,15 +532,15 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
 
         {kind === 'video' && (
           <>
-            {/* Mode Switch: Video Transcode vs Audio Extraction */}
-            <div className="grid grid-cols-2 gap-1.5 p-1 rounded-lg bg-[#09090b] border border-white/[0.08]">
+            {/* Mode Switch */}
+            <div className="grid grid-cols-2 gap-1.5 p-1 rounded-lg bg-zinc-100 dark:bg-[#09090b] border border-zinc-200 dark:border-white/[0.08]">
               <button
                 type="button"
                 onClick={() => updateVideo({ mode: 'video' })}
                 className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
                   settings.video.mode === 'video'
-                    ? 'bg-white/10 text-zinc-100'
-                    : 'text-zinc-400 hover:text-zinc-200'
+                    ? 'bg-white dark:bg-white/10 text-zinc-900 dark:text-zinc-100 shadow-xs'
+                    : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
                 }`}
               >
                 Compress / Convert Video
@@ -540,8 +550,8 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                 onClick={() => updateVideo({ mode: 'extract-audio' })}
                 className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
                   settings.video.mode === 'extract-audio'
-                    ? 'bg-cyan-500/20 text-cyan-200'
-                    : 'text-zinc-400 hover:text-zinc-200'
+                    ? 'bg-cyan-500/15 text-cyan-800 dark:text-cyan-200'
+                    : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
                 }`}
               >
                 Extract Audio Track
@@ -553,7 +563,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
             ) : (
               <div className="space-y-4">
                 <div>
-                  <span className="block text-xs font-medium text-zinc-300 mb-2">
+                  <span className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-2">
                     Output Container
                   </span>
                   <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
@@ -564,8 +574,8 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                         onClick={() => updateVideo({ format: fmt.value })}
                         className={`px-2 py-2 text-xs font-medium rounded-lg border transition-colors cursor-pointer ${
                           settings.video.format === fmt.value
-                            ? 'border-cyan-400 bg-cyan-500/15 text-cyan-200'
-                            : 'border-white/[0.08] bg-white/[0.03] text-zinc-400 hover:text-zinc-200'
+                            ? 'border-cyan-500 bg-cyan-500/15 text-cyan-800 dark:text-cyan-200'
+                            : 'border-zinc-200 dark:border-white/[0.08] bg-zinc-50 dark:bg-white/[0.03] text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
                         }`}
                       >
                         {fmt.label}
@@ -579,7 +589,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                     <div>
                       <label
                         htmlFor={`gif-width-${item.id}`}
-                        className="block text-xs font-medium text-zinc-300 mb-1.5"
+                        className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1.5"
                       >
                         GIF Width (px)
                       </label>
@@ -593,14 +603,14 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                         onChange={(e) =>
                           updateVideo({ gifWidth: Math.max(120, Number(e.target.value) || 480) })
                         }
-                        className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-white/10 bg-[#09090b] text-zinc-100 focus:outline-none focus:border-cyan-400"
+                        className={inputClass}
                       />
                     </div>
 
                     <div>
                       <label
                         htmlFor={`gif-fps-${item.id}`}
-                        className="block text-xs font-medium text-zinc-300 mb-1.5"
+                        className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1.5"
                       >
                         GIF Frame Rate
                       </label>
@@ -611,7 +621,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                           const v = e.target.value;
                           updateVideo({ fps: v === 'original' ? 'original' : (Number(v) as VideoFps) });
                         }}
-                        className="w-full px-3 py-2 text-xs rounded-lg border border-white/10 bg-[#09090b] text-zinc-100 focus:outline-none focus:border-cyan-400"
+                        className={selectClass}
                       >
                         {VIDEO_FPS_OPTIONS.map((f) => (
                           <option key={String(f.value)} value={f.value}>
@@ -631,7 +641,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                         <div>
                           <label
                             htmlFor={`video-codec-${item.id}`}
-                            className="block text-xs font-medium text-zinc-300 mb-1.5"
+                            className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1.5"
                           >
                             Video Codec
                           </label>
@@ -639,7 +649,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                             id={`video-codec-${item.id}`}
                             value={settings.video.codec}
                             onChange={(e) => updateVideo({ codec: e.target.value as VideoCodec })}
-                            className="w-full px-3 py-2 text-xs rounded-lg border border-white/10 bg-[#09090b] text-zinc-100 focus:outline-none focus:border-cyan-400"
+                            className={selectClass}
                           >
                             {availableVideoCodecs.map((c) => (
                               <option key={c.value} value={c.value}>
@@ -653,7 +663,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                       <div>
                         <label
                           htmlFor={`video-crf-${item.id}`}
-                          className="block text-xs font-medium text-zinc-300 mb-1.5"
+                          className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1.5"
                         >
                           CRF Quality Preset
                         </label>
@@ -661,7 +671,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                           id={`video-crf-${item.id}`}
                           value={settings.video.crf}
                           onChange={(e) => updateVideo({ crf: Number(e.target.value) })}
-                          className="w-full px-3 py-2 text-xs rounded-lg border border-white/10 bg-[#09090b] text-zinc-100 focus:outline-none focus:border-cyan-400"
+                          className={selectClass}
                         >
                           {VIDEO_CRF_PRESETS.map((p) => (
                             <option key={p.value} value={p.value}>
@@ -681,7 +691,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                       <div>
                         <label
                           htmlFor={`video-res-${item.id}`}
-                          className="block text-xs font-medium text-zinc-300 mb-1.5"
+                          className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1.5"
                         >
                           Resolution Scaler
                         </label>
@@ -691,7 +701,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                           onChange={(e) =>
                             updateVideo({ resolution: e.target.value as VideoResolution })
                           }
-                          className="w-full px-3 py-2 text-xs rounded-lg border border-white/10 bg-[#09090b] text-zinc-100 focus:outline-none focus:border-cyan-400"
+                          className={selectClass}
                         >
                           {VIDEO_RESOLUTIONS.map((r) => (
                             <option key={r.value} value={r.value}>
@@ -704,7 +714,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                       <div>
                         <label
                           htmlFor={`video-fps-${item.id}`}
-                          className="block text-xs font-medium text-zinc-300 mb-1.5"
+                          className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1.5"
                         >
                           Frame Rate
                         </label>
@@ -717,7 +727,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                               fps: v === 'original' ? 'original' : (Number(v) as VideoFps),
                             });
                           }}
-                          className="w-full px-3 py-2 text-xs rounded-lg border border-white/10 bg-[#09090b] text-zinc-100 focus:outline-none focus:border-cyan-400"
+                          className={selectClass}
                         >
                           {VIDEO_FPS_OPTIONS.map((f) => (
                             <option key={String(f.value)} value={f.value}>
@@ -728,16 +738,16 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                       </div>
                     </div>
 
-                    <label className="flex items-center justify-between gap-3 pt-2 border-t border-white/[0.06] cursor-pointer">
-                      <span className="inline-flex items-center gap-2 text-xs text-zinc-300">
-                        <VolumeX className="w-3.5 h-3.5 text-zinc-400" />
+                    <label className="flex items-center justify-between gap-3 pt-2 border-t border-zinc-200 dark:border-white/[0.06] cursor-pointer">
+                      <span className="inline-flex items-center gap-2 text-xs text-zinc-700 dark:text-zinc-300">
+                        <VolumeX className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400" />
                         Mute / Strip Audio Track
                       </span>
                       <input
                         type="checkbox"
                         checked={settings.video.muteAudio}
                         onChange={(e) => updateVideo({ muteAudio: e.target.checked })}
-                        className="w-4 h-4 accent-cyan-400 rounded cursor-pointer"
+                        className="w-4 h-4 accent-cyan-600 dark:accent-cyan-400 rounded cursor-pointer"
                       />
                     </label>
                   </>
@@ -750,14 +760,14 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
         {kind === 'audio' && renderAudioControls(settings.audio, false)}
       </div>
 
-      {/* Footer note on active engine */}
-      <div className="px-4 py-2.5 border-t border-white/[0.06] bg-white/[0.015] flex items-center justify-between text-[11px] text-zinc-500">
+      {/* Footer note */}
+      <div className="px-4 py-2.5 border-t border-zinc-200 dark:border-white/[0.06] bg-zinc-50 dark:bg-white/[0.015] flex items-center justify-between text-[11px] text-zinc-500">
         <span className="inline-flex items-center gap-1.5">
           <SlidersHorizontal className="w-3 h-3" />
           Settings apply per-file until synced
         </span>
         {item.engineUsed && (
-          <span className="font-mono text-zinc-400">
+          <span className="font-mono text-zinc-600 dark:text-zinc-400">
             Last engine: {item.engineUsed}
           </span>
         )}

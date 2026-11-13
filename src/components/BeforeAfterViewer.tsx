@@ -17,7 +17,6 @@ export const BeforeAfterViewer: React.FC<BeforeAfterViewerProps> = ({ item, onDo
   const containerRef = useRef<HTMLDivElement | null>(null);
   const isDraggingRef = useRef(false);
 
-  // Generate live compressed preview when inspecting an image before committing batch
   useEffect(() => {
     if (item.kind !== 'image') {
       setLivePreviewUrl(null);
@@ -83,25 +82,25 @@ export const BeforeAfterViewer: React.FC<BeforeAfterViewerProps> = ({ item, onDo
     activeAfterSize !== null ? calculateSavings(item.originalSize, activeAfterSize) : null;
 
   return (
-    <div className="rounded-xl border border-white/[0.08] bg-[#121216] overflow-hidden">
+    <div className="rounded-xl border border-zinc-200 dark:border-white/[0.08] bg-white dark:bg-[#121216] overflow-hidden">
       {/* Header Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 border-b border-white/[0.08]">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 border-b border-zinc-200 dark:border-white/[0.08]">
         <div className="flex items-center gap-2 text-xs">
-          <Columns2 className="w-3.5 h-3.5 text-cyan-400" />
-          <span className="font-medium text-zinc-200">
+          <Columns2 className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
+          <span className="font-medium text-zinc-800 dark:text-zinc-200">
             {item.kind === 'image' ? 'Before / After Comparison' : 'Media Preview & Comparison'}
           </span>
           {activeAfterSize !== null && savings && (
             <>
-              <span aria-hidden="true" className="text-zinc-600">·</span>
-              <span className="font-mono text-zinc-400 tabular-nums">
+              <span aria-hidden="true" className="text-zinc-400 dark:text-zinc-600">·</span>
+              <span className="font-mono text-zinc-600 dark:text-zinc-400 tabular-nums">
                 {formatBytes(item.originalSize)} → {formatBytes(activeAfterSize)}
               </span>
               <span
                 className={`px-1.5 py-0.5 rounded font-mono text-[11px] font-semibold tabular-nums ${
                   savings.isLarger
-                    ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
-                    : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                    ? 'bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30'
+                    : 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30'
                 }`}
               >
                 {savings.label}
@@ -116,7 +115,7 @@ export const BeforeAfterViewer: React.FC<BeforeAfterViewerProps> = ({ item, onDo
               type="button"
               onClick={() => setIsZoomed((z) => !z)}
               aria-pressed={isZoomed}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md border border-white/10 bg-white/[0.04] text-zinc-200 hover:bg-white/[0.08] transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md border border-zinc-200 dark:border-white/10 bg-zinc-50 dark:bg-white/[0.04] text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-white/[0.08] transition-colors cursor-pointer"
             >
               {isZoomed ? <ZoomOut className="w-3.5 h-3.5" /> : <ZoomIn className="w-3.5 h-3.5" />}
               {isZoomed ? '1x Fit' : '2x Zoom'}
@@ -127,7 +126,7 @@ export const BeforeAfterViewer: React.FC<BeforeAfterViewerProps> = ({ item, onDo
             <button
               type="button"
               onClick={() => onDownload(item)}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-md bg-emerald-500 text-zinc-950 hover:bg-emerald-400 transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-md bg-emerald-600 dark:bg-emerald-500 text-white dark:text-zinc-950 hover:bg-emerald-500 dark:hover:bg-emerald-400 transition-colors cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" />
               Save Output
@@ -146,9 +145,9 @@ export const BeforeAfterViewer: React.FC<BeforeAfterViewerProps> = ({ item, onDo
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
-            className="relative w-full h-64 sm:h-72 rounded-lg overflow-hidden checkerboard-bg border border-white/[0.08] select-none touch-none cursor-ew-resize"
+            className="relative w-full h-64 sm:h-72 rounded-lg overflow-hidden checkerboard-bg border border-zinc-200 dark:border-white/[0.08] select-none touch-none cursor-ew-resize"
           >
-            {/* After Image (Full layer beneath) */}
+            {/* After Image */}
             <img
               src={livePreviewUrl || item.originalUrl}
               alt={`${item.name} compressed preview`}
@@ -159,7 +158,7 @@ export const BeforeAfterViewer: React.FC<BeforeAfterViewerProps> = ({ item, onDo
               }`}
             />
 
-            {/* Before Image (Clipped left side) */}
+            {/* Before Image */}
             <div
               className="absolute inset-0 overflow-hidden"
               style={{ clipPath: `inset(0 ${100 - sliderPos}% 0 0)` }}
@@ -177,16 +176,16 @@ export const BeforeAfterViewer: React.FC<BeforeAfterViewerProps> = ({ item, onDo
 
             {/* Vertical Divider Handle */}
             <div
-              className="absolute top-0 bottom-0 w-0.5 bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.6)] pointer-events-none"
+              className="absolute top-0 bottom-0 w-0.5 bg-cyan-500 dark:bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.6)] pointer-events-none"
               style={{ left: `${sliderPos}%` }}
             >
-              <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-7 h-7 rounded-full bg-[#09090b] border-2 border-cyan-400 flex items-center justify-center text-[10px] font-mono text-cyan-300">
+              <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-7 h-7 rounded-full bg-white dark:bg-[#09090b] border-2 border-cyan-500 dark:border-cyan-400 flex items-center justify-center text-[10px] font-mono text-cyan-700 dark:text-cyan-300">
                 ↔
               </div>
             </div>
 
             {/* Corner Labels */}
-            <span className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded bg-black/75 border border-white/10 text-[11px] font-mono text-zinc-200 pointer-events-none">
+            <span className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded bg-black/75 border border-white/10 text-[11px] font-mono text-zinc-100 pointer-events-none">
               Original · {formatBytes(item.originalSize)}
             </span>
             <span className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded bg-black/75 border border-cyan-500/30 text-[11px] font-mono text-cyan-200 pointer-events-none">
@@ -196,7 +195,7 @@ export const BeforeAfterViewer: React.FC<BeforeAfterViewerProps> = ({ item, onDo
           </div>
 
           <div className="mt-2 flex items-center justify-between gap-3 px-1">
-            <label htmlFor="compare-range" className="text-[11px] text-zinc-400 whitespace-nowrap">
+            <label htmlFor="compare-range" className="text-[11px] text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
               Split Position
             </label>
             <input
@@ -209,7 +208,7 @@ export const BeforeAfterViewer: React.FC<BeforeAfterViewerProps> = ({ item, onDo
               className="studio-slider flex-1"
               aria-label="Before and after comparison split slider"
             />
-            <span className="text-[11px] font-mono text-zinc-400 tabular-nums w-9 text-right">
+            <span className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 tabular-nums w-9 text-right">
               {Math.round(sliderPos)}%
             </span>
           </div>
@@ -217,7 +216,7 @@ export const BeforeAfterViewer: React.FC<BeforeAfterViewerProps> = ({ item, onDo
       ) : item.kind === 'video' ? (
         <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-3">
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-[11px] font-mono text-zinc-400">
+            <div className="flex items-center justify-between text-[11px] font-mono text-zinc-500 dark:text-zinc-400">
               <span>Original Source</span>
               <span>{formatBytes(item.originalSize)}</span>
             </div>
@@ -225,14 +224,14 @@ export const BeforeAfterViewer: React.FC<BeforeAfterViewerProps> = ({ item, onDo
               src={item.originalUrl}
               controls
               playsInline
-              className="w-full h-44 rounded-lg bg-black border border-white/[0.08] object-contain"
+              className="w-full h-44 rounded-lg bg-black border border-zinc-200 dark:border-white/[0.08] object-contain"
             />
           </div>
 
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-[11px] font-mono text-zinc-400">
+            <div className="flex items-center justify-between text-[11px] font-mono text-zinc-500 dark:text-zinc-400">
               <span>Processed Output</span>
-              <span className={item.outputSize ? 'text-emerald-400' : ''}>
+              <span className={item.outputSize ? 'text-emerald-600 dark:text-emerald-400' : ''}>
                 {item.outputSize ? formatBytes(item.outputSize) : 'Pending run'}
               </span>
             </div>
@@ -245,8 +244,10 @@ export const BeforeAfterViewer: React.FC<BeforeAfterViewerProps> = ({ item, onDo
                   className="w-full h-44 rounded-lg bg-black border border-emerald-500/30 object-contain"
                 />
               ) : item.settings.video.mode === 'extract-audio' ? (
-                <div className="w-full h-44 rounded-lg bg-zinc-950 border border-emerald-500/30 flex flex-col items-center justify-center p-4 gap-3">
-                  <span className="text-xs font-mono text-emerald-300">Extracted Audio Track</span>
+                <div className="w-full h-44 rounded-lg bg-zinc-100 dark:bg-zinc-950 border border-emerald-500/30 flex flex-col items-center justify-center p-4 gap-3">
+                  <span className="text-xs font-mono text-emerald-700 dark:text-emerald-300">
+                    Extracted Audio Track
+                  </span>
                   <audio src={item.outputUrl} controls className="w-full" />
                 </div>
               ) : (
@@ -258,7 +259,7 @@ export const BeforeAfterViewer: React.FC<BeforeAfterViewerProps> = ({ item, onDo
                 />
               )
             ) : (
-              <div className="w-full h-44 rounded-lg bg-zinc-950/60 border border-white/[0.06] flex items-center justify-center text-xs text-zinc-500 px-4 text-center">
+              <div className="w-full h-44 rounded-lg bg-zinc-100 dark:bg-zinc-950/60 border border-zinc-200 dark:border-white/[0.06] flex items-center justify-center text-xs text-zinc-500 px-4 text-center">
                 Run compression to preview processed output side-by-side.
               </div>
             )}
@@ -266,18 +267,18 @@ export const BeforeAfterViewer: React.FC<BeforeAfterViewerProps> = ({ item, onDo
         </div>
       ) : (
         <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div className="p-3 rounded-lg bg-zinc-950/70 border border-white/[0.06] space-y-2">
-            <div className="flex items-center justify-between text-[11px] font-mono text-zinc-400">
+          <div className="p-3 rounded-lg bg-zinc-50 dark:bg-zinc-950/70 border border-zinc-200 dark:border-white/[0.06] space-y-2">
+            <div className="flex items-center justify-between text-[11px] font-mono text-zinc-500 dark:text-zinc-400">
               <span>Original Audio</span>
               <span>{formatBytes(item.originalSize)}</span>
             </div>
             <audio src={item.originalUrl} controls className="w-full" />
           </div>
 
-          <div className="p-3 rounded-lg bg-zinc-950/70 border border-white/[0.06] space-y-2">
-            <div className="flex items-center justify-between text-[11px] font-mono text-zinc-400">
+          <div className="p-3 rounded-lg bg-zinc-50 dark:bg-zinc-950/70 border border-zinc-200 dark:border-white/[0.06] space-y-2">
+            <div className="flex items-center justify-between text-[11px] font-mono text-zinc-500 dark:text-zinc-400">
               <span>Converted Output</span>
-              <span className={item.outputSize ? 'text-emerald-400' : ''}>
+              <span className={item.outputSize ? 'text-emerald-600 dark:text-emerald-400' : ''}>
                 {item.outputSize ? formatBytes(item.outputSize) : 'Pending run'}
               </span>
             </div>

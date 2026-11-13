@@ -55,8 +55,8 @@ export const DropZone: React.FC<DropZoneProps> = ({
       data-testid="media-dropzone"
       className={`relative rounded-xl border border-dashed transition-colors ${
         isDragOver
-          ? 'border-cyan-400 bg-cyan-500/10'
-          : 'border-white/15 bg-[#121216] hover:border-white/25'
+          ? 'border-cyan-500 bg-cyan-500/10'
+          : 'border-zinc-300 dark:border-white/15 bg-white dark:bg-[#121216] hover:border-zinc-400 dark:hover:border-white/25'
       } ${compact ? 'p-4' : 'p-6'}`}
     >
       <input
@@ -71,7 +71,7 @@ export const DropZone: React.FC<DropZoneProps> = ({
 
       <div className="flex flex-col items-center text-center gap-3">
         <div
-          className={`flex items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-cyan-400 ${
+          className={`flex items-center justify-center rounded-lg border border-zinc-200 dark:border-white/10 bg-zinc-50 dark:bg-white/[0.03] text-cyan-600 dark:text-cyan-400 ${
             compact ? 'w-9 h-9' : 'w-11 h-11'
           }`}
         >
@@ -79,10 +79,10 @@ export const DropZone: React.FC<DropZoneProps> = ({
         </div>
 
         <div className="space-y-1">
-          <p className="text-sm font-medium text-zinc-100">
+          <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
             Drop videos, images, or audio files here
           </p>
-          <p className="text-xs text-zinc-400">
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">
             MP4 · WebM · MKV · MOV · JPG · PNG · WebP · AVIF · MP3 · WAV · FLAC
           </p>
         </div>
@@ -91,7 +91,7 @@ export const DropZone: React.FC<DropZoneProps> = ({
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
-            className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg bg-cyan-500 text-zinc-950 hover:bg-cyan-400 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg bg-cyan-600 dark:bg-cyan-500 text-white dark:text-zinc-950 hover:bg-cyan-500 dark:hover:bg-cyan-400 transition-colors cursor-pointer whitespace-nowrap shrink-0"
           >
             <FolderPlus className="w-3.5 h-3.5" />
             Select Files
@@ -101,9 +101,9 @@ export const DropZone: React.FC<DropZoneProps> = ({
             type="button"
             onClick={onLoadSamples}
             disabled={isGeneratingSamples}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium rounded-lg border border-white/10 bg-white/[0.04] text-zinc-200 hover:bg-white/[0.08] disabled:opacity-50 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium rounded-lg border border-zinc-200 dark:border-white/10 bg-zinc-50 dark:bg-white/[0.04] text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-white/[0.08] disabled:opacity-50 transition-colors cursor-pointer whitespace-nowrap shrink-0"
           >
-            <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+            <Sparkles className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
             {isGeneratingSamples ? 'Generating Samples...' : 'Load Sample Media'}
           </button>
         </div>
