@@ -1,5 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import JSZip from 'jszip';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Cpu,
   HardDriveDownload,
@@ -15,7 +14,8 @@ import { FileQueue } from './components/FileQueue';
 import { InspectorPanel } from './components/InspectorPanel';
 import { SettingsModal } from './components/SettingsModal';
 import { TerminalLogs } from './components/TerminalLogs';
-import { extractMediaMetadata, processMediaItem } from './services/mediaEngine';
+import { useMediaProcessor } from './hooks/useMediaProcessor';
+import { useMediaQueue } from './hooks/useMediaQueue';
 import { generateSampleMediaFiles } from './services/sampleMedia';
 import {
   BridgeConfig,
@@ -25,13 +25,7 @@ import {
   PresetId,
   TerminalLogEntry,
 } from './types/media';
-import {
-  cloneMediaSettings,
-  createDefaultSettingsForKind,
-  detectMediaKind,
-  formatBytes,
-} from './utils/mediaUtils';
-import { applyPresetToMediaSettings } from './utils/presets';
+import { formatBytes } from './utils/mediaUtils';
 import {
   loadThemeConfig,
   resolveEffectiveTheme,
@@ -52,29 +46,76 @@ function readSystemPrefersDark(): boolean {
 }
 
 export default function App() {
-  const [queue, setQueue] = useState<MediaQueueItem[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [engineMode, setEngineMode] = useState<EngineMode>('browser-wasm');
   const [bridgeConfig, setBridgeConfig] = useState<BridgeConfig>({
-    url: 'http://127.0.0.1:8000',
+    url: 'http://localhost:3001',
     timeoutMs: 120000,
     presetName: 'veryfast',
   });
   const [themeConfig, setThemeConfig] = useState<ThemeConfig>(() => loadThemeConfig());
   const [systemPrefersDark, setSystemPrefersDark] = useState<boolean>(() => readSystemPrefersDark());
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isBatchRunning, setIsBatchRunning] = useState(false);
-  const [isZipping, setIsZipping] = useState(false);
   const [isGeneratingSamples, setIsGeneratingSamples] = useState(false);
-  const [fallbackNotice, setFallbackNotice] = useState<string | null>(null);
   const [logs, setLogs] = useState<TerminalLogEntry[]>([]);
   const [isLogsExpanded, setIsLogsExpanded] = useState(true);
 
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const queueRef = useRef<MediaQueueItem[]>(queue);
-  queueRef.current = queue;
+  const appendLog = useCallback(
+    (level: TerminalLogEntry['level'], message: string, fileId?: string) => {
+      const entry: TerminalLogEntry = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        timestamp: nowTimestamp(),
+        level,
+        message,
+        fileId,
+      };
+      setLogs((prev) => [...prev.slice(-249), entry]);
+    },
+    []
+  );
 
-  const objectUrlsRef = useRef<Set<string>>(new Set());
+  const {
+    queue,
+    queueRef,
+    selectedItem,
+    similarCount,
+    totalSavedBytes,
+    setSelectedId,
+    isItemActive,
+    getRevision,
+    addFiles,
+    removeItem,
+    clearQueue,
+    updateStatus,
+    updateProgress,
+    storeCompletedOutput,
+    updateSettings,
+    applyPreset,
+    applyToAllSimilar,
+  } = useMediaQueue({ appendLog });
+
+  const {
+    isBatchRunning,
+    isZipping,
+    fallbackNotice,
+    setFallbackNotice,
+    startBatch,
+    compressSingle,
+    cancelBatch,
+    cancelItemIfActive,
+    downloadOne,
+    downloadAllZip,
+  } = useMediaProcessor({
+    queueRef,
+    engineMode,
+    bridgeConfig,
+    isItemActive,
+    getRevision,
+    updateStatus,
+    updateProgress,
+    storeCompletedOutput,
+    appendLog,
+    onExpandLogs: () => setIsLogsExpanded(true),
+  });
 
   // Listen for OS dark/light preference changes
   useEffect(() => {
@@ -103,50 +144,6 @@ export default function App() {
     saveThemeConfig(themeConfig);
   }, [effectiveTheme, themeConfig]);
 
-  const registerUrl = (url: string) => {
-    objectUrlsRef.current.add(url);
-    return url;
-  };
-
-  const revokeUrl = (url?: string) => {
-    if (!url) return;
-    if (objectUrlsRef.current.has(url)) {
-      objectUrlsRef.current.delete(url);
-    }
-    try {
-      URL.revokeObjectURL(url);
-    } catch {
-      // ignore invalid URL revocation
-    }
-  };
-
-  useEffect(() => {
-    return () => {
-      objectUrlsRef.current.forEach((url) => {
-        try {
-          URL.revokeObjectURL(url);
-        } catch {
-          // ignore
-        }
-      });
-      objectUrlsRef.current.clear();
-    };
-  }, []);
-
-  const appendLog = useCallback(
-    (level: TerminalLogEntry['level'], message: string, fileId?: string) => {
-      const entry: TerminalLogEntry = {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        timestamp: nowTimestamp(),
-        level,
-        message,
-        fileId,
-      };
-      setLogs((prev) => [...prev.slice(-249), entry]);
-    },
-    []
-  );
-
   const handleThemeConfigChange = useCallback(
     (next: ThemeConfig) => {
       setThemeConfig(next);
@@ -161,62 +158,11 @@ export default function App() {
     [appendLog, systemPrefersDark]
   );
 
-  const handleFilesAdded = useCallback(
-    async (files: File[]) => {
-      const newItems: MediaQueueItem[] = [];
-      let skipped = 0;
-
-      for (const file of files) {
-        const kind = detectMediaKind(file);
-        if (!kind) {
-          skipped++;
-          continue;
-        }
-        const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-        const originalUrl = registerUrl(URL.createObjectURL(file));
-
-        newItems.push({
-          id,
-          file,
-          name: file.name,
-          kind,
-          originalSize: file.size,
-          originalUrl,
-          metadata: {},
-          settings: createDefaultSettingsForKind(kind),
-          status: 'queued',
-          progress: 0,
-        });
-      }
-
-      if (skipped > 0) {
-        appendLog('warn', `Skipped ${skipped} unsupported file(s).`);
-      }
-
-      if (newItems.length === 0) return;
-
-      setQueue((prev) => [...prev, ...newItems]);
-      setSelectedId((prevSelected) => prevSelected ?? newItems[0].id);
-      appendLog('info', `Queued ${newItems.length} local media file(s).`);
-
-      for (const item of newItems) {
-        extractMediaMetadata(item.file, item.kind, item.originalUrl).then(
-          ({ metadata, thumbnailUrl }) => {
-            setQueue((prev) =>
-              prev.map((q) => (q.id === item.id ? { ...q, metadata, thumbnailUrl } : q))
-            );
-          }
-        );
-      }
-    },
-    [appendLog]
-  );
-
   const handleLoadSamples = useCallback(async () => {
     setIsGeneratingSamples(true);
     try {
       const sampleFiles = await generateSampleMediaFiles();
-      await handleFilesAdded(sampleFiles);
+      await addFiles(sampleFiles);
       appendLog('success', `Generated ${sampleFiles.length} local calibration media files.`);
     } catch (err) {
       appendLog(
@@ -226,278 +172,40 @@ export default function App() {
     } finally {
       setIsGeneratingSamples(false);
     }
-  }, [appendLog, handleFilesAdded]);
+  }, [addFiles, appendLog]);
 
-  const handleRemoveItem = useCallback((id: string) => {
-    setQueue((prev) => {
-      const target = prev.find((i) => i.id === id);
-      if (target) {
-        revokeUrl(target.originalUrl);
-        revokeUrl(target.outputUrl);
-      }
-      const remaining = prev.filter((i) => i.id !== id);
-      setSelectedId((cur) => (cur === id ? remaining[0]?.id ?? null : cur));
-      return remaining;
-    });
-  }, []);
+  const handleRemoveItem = useCallback(
+    (id: string) => {
+      removeItem(id, cancelItemIfActive);
+    },
+    [cancelItemIfActive, removeItem]
+  );
 
   const handleClearAll = useCallback(() => {
-    setQueue((prev) => {
-      prev.forEach((item) => {
-        revokeUrl(item.originalUrl);
-        revokeUrl(item.outputUrl);
-      });
-      return [];
-    });
-    setSelectedId(null);
+    clearQueue(cancelBatch);
     setFallbackNotice(null);
-    appendLog('info', 'Cleared media queue.');
-  }, [appendLog]);
+  }, [cancelBatch, clearQueue, setFallbackNotice]);
 
-  const handleUpdateSettings = useCallback((id: string, next: MediaSettings) => {
-    setQueue((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              settings: next,
-              status: item.status === 'completed' ? 'queued' : item.status,
-              progress: item.status === 'completed' ? 0 : item.progress,
-            }
-          : item
-      )
-    );
-  }, []);
+  const handleUpdateSettings = useCallback(
+    (id: string, next: MediaSettings) => {
+      updateSettings(id, next, cancelItemIfActive);
+    },
+    [cancelItemIfActive, updateSettings]
+  );
 
   const handleApplyPreset = useCallback(
     (id: string, presetId: PresetId) => {
-      setQueue((prev) =>
-        prev.map((item) => {
-          if (item.id !== id) return item;
-          const updated = applyPresetToMediaSettings(presetId, item.settings);
-          return {
-            ...item,
-            settings: updated,
-            status: item.status === 'completed' ? 'queued' : item.status,
-            progress: item.status === 'completed' ? 0 : item.progress,
-          };
-        })
-      );
-      appendLog('info', `Applied preset "${presetId}" to selected file.`, id);
+      applyPreset(id, presetId, cancelItemIfActive);
     },
-    [appendLog]
+    [applyPreset, cancelItemIfActive]
   );
 
   const handleApplyToAllSimilar = useCallback(
     (sourceItem: MediaQueueItem) => {
-      setQueue((prev) =>
-        prev.map((item) => {
-          if (item.kind !== sourceItem.kind || item.id === sourceItem.id) return item;
-          return {
-            ...item,
-            settings: cloneMediaSettings(sourceItem.settings),
-            status: item.status === 'completed' ? 'queued' : item.status,
-            progress: item.status === 'completed' ? 0 : item.progress,
-          };
-        })
-      );
-      appendLog(
-        'info',
-        `Synced ${sourceItem.kind} settings to all ${sourceItem.kind} items in queue.`
-      );
+      applyToAllSimilar(sourceItem, cancelItemIfActive);
     },
-    [appendLog]
+    [applyToAllSimilar, cancelItemIfActive]
   );
-
-  const runItemsSequentially = useCallback(
-    async (targetIds: string[]) => {
-      if (targetIds.length === 0) return;
-      setIsBatchRunning(true);
-      setIsLogsExpanded(true);
-      const controller = new AbortController();
-      abortControllerRef.current = controller;
-
-      for (const id of targetIds) {
-        if (controller.signal.aborted) break;
-
-        const currentItem = queueRef.current.find((i) => i.id === id);
-        if (!currentItem) continue;
-
-        setQueue((prev) =>
-          prev.map((q) =>
-            q.id === id
-              ? { ...q, status: 'processing', progress: 1, errorMessage: undefined }
-              : q
-          )
-        );
-
-        appendLog('info', `Starting ${currentItem.name} (${formatBytes(currentItem.originalSize)})`, id);
-
-        try {
-          const outcome = await processMediaItem(
-            currentItem,
-            engineMode,
-            bridgeConfig,
-            {
-              onProgress: (pct) => {
-                setQueue((prev) =>
-                  prev.map((q) => (q.id === id ? { ...q, progress: pct } : q))
-                );
-              },
-              onLog: (level, msg) => appendLog(level, msg, id),
-              onFallbackNotice: (notice) => setFallbackNotice(notice),
-            },
-            controller.signal
-          );
-
-          const outputUrl = registerUrl(URL.createObjectURL(outcome.blob));
-          setQueue((prev) =>
-            prev.map((q) => {
-              if (q.id !== id) return q;
-              if (q.outputUrl) revokeUrl(q.outputUrl);
-              return {
-                ...q,
-                status: 'completed',
-                progress: 100,
-                outputBlob: outcome.blob,
-                outputUrl,
-                outputSize: outcome.blob.size,
-                outputFilename: outcome.filename,
-                engineUsed: outcome.engineUsed,
-                processingTimeMs: outcome.durationMs,
-              };
-            })
-          );
-
-          appendLog(
-            'success',
-            `Completed ${outcome.filename}: ${formatBytes(currentItem.originalSize)} → ${formatBytes(
-              outcome.blob.size
-            )} in ${outcome.durationMs}ms [${outcome.engineUsed}]`,
-            id
-          );
-        } catch (err) {
-          if (err instanceof DOMException && err.name === 'AbortError') {
-            setQueue((prev) =>
-              prev.map((q) => (q.id === id ? { ...q, status: 'cancelled', progress: 0 } : q))
-            );
-            appendLog('warn', `Cancelled processing "${currentItem.name}".`, id);
-            break;
-          }
-
-          const message = err instanceof Error ? err.message : String(err);
-          setQueue((prev) =>
-            prev.map((q) =>
-              q.id === id ? { ...q, status: 'error', progress: 0, errorMessage: message } : q
-            )
-          );
-          appendLog('error', `Failed "${currentItem.name}": ${message}`, id);
-        }
-      }
-
-      abortControllerRef.current = null;
-      setIsBatchRunning(false);
-    },
-    [appendLog, bridgeConfig, engineMode]
-  );
-
-  const handleStartBatch = useCallback(() => {
-    const targetIds = queueRef.current
-      .filter((i) => i.status === 'queued' || i.status === 'error' || i.status === 'cancelled')
-      .map((i) => i.id);
-    if (targetIds.length > 0) {
-      runItemsSequentially(targetIds);
-    }
-  }, [runItemsSequentially]);
-
-  const handleCompressSingle = useCallback(
-    (id: string) => {
-      if (isBatchRunning) return;
-      runItemsSequentially([id]);
-    },
-    [isBatchRunning, runItemsSequentially]
-  );
-
-  const handleCancelBatch = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      appendLog('warn', 'Abort signal sent to active encoder.');
-    }
-  }, [appendLog]);
-
-  const handleDownloadOne = useCallback((item: MediaQueueItem) => {
-    if (!item.outputUrl) return;
-    const a = document.createElement('a');
-    a.href = item.outputUrl;
-    a.download = item.outputFilename || `${item.name}_compressed`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  }, []);
-
-  const handleDownloadAllZip = useCallback(async () => {
-    const completed = queueRef.current.filter((i) => i.status === 'completed' && i.outputBlob);
-    if (completed.length === 0) return;
-
-    setIsZipping(true);
-    try {
-      const zip = new JSZip();
-      const usedNames = new Map<string, number>();
-
-      for (const item of completed) {
-        if (!item.outputBlob) continue;
-        let name = item.outputFilename || `${item.name}_compressed`;
-        const count = usedNames.get(name) || 0;
-        usedNames.set(name, count + 1);
-        if (count > 0) {
-          const dot = name.lastIndexOf('.');
-          name =
-            dot > 0
-              ? `${name.slice(0, dot)}_${count + 1}${name.slice(dot)}`
-              : `${name}_${count + 1}`;
-        }
-        zip.file(name, item.outputBlob);
-      }
-
-      const zipBlob = await zip.generateAsync({ type: 'blob' });
-      const zipUrl = URL.createObjectURL(zipBlob);
-      const a = document.createElement('a');
-      a.href = zipUrl;
-      a.download = `MediaForge_Batch_${completed.length}_files.zip`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(zipUrl), 2500);
-      appendLog('success', `Exported ${completed.length} files as ZIP (${formatBytes(zipBlob.size)}).`);
-    } catch (err) {
-      appendLog(
-        'error',
-        `ZIP export failed: ${err instanceof Error ? err.message : String(err)}`
-      );
-    } finally {
-      setIsZipping(false);
-    }
-  }, [appendLog]);
-
-  const selectedItem = useMemo(
-    () => queue.find((i) => i.id === selectedId) ?? queue[0] ?? null,
-    [queue, selectedId]
-  );
-
-  const similarCount = useMemo(() => {
-    if (!selectedItem) return 0;
-    return queue.filter((i) => i.kind === selectedItem.kind).length;
-  }, [queue, selectedItem]);
-
-  const totalSavedBytes = useMemo(() => {
-    return queue.reduce((acc, item) => {
-      if (item.status === 'completed' && item.outputSize !== undefined) {
-        const diff = item.originalSize - item.outputSize;
-        return acc + Math.max(0, diff);
-      }
-      return acc;
-    }, 0);
-  }, [queue]);
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-[#09090b] text-zinc-900 dark:text-zinc-100 flex flex-col transition-colors duration-200">
@@ -587,7 +295,7 @@ export default function App() {
         {/* Zone 2: Left/Top Dropzone & Batch Queue Panel */}
         <div className="lg:col-span-5 xl:col-span-4 flex flex-col gap-4 lg:h-[calc(100vh-6.25rem)] lg:sticky lg:top-20">
           <DropZone
-            onFilesAdded={handleFilesAdded}
+            onFilesAdded={addFiles}
             onLoadSamples={handleLoadSamples}
             isGeneratingSamples={isGeneratingSamples}
             compact={queue.length > 0}
@@ -600,10 +308,10 @@ export default function App() {
             isZipping={isZipping}
             onSelect={setSelectedId}
             onRemove={handleRemoveItem}
-            onDownloadOne={handleDownloadOne}
-            onStartBatch={handleStartBatch}
-            onCancelBatch={handleCancelBatch}
-            onDownloadAllZip={handleDownloadAllZip}
+            onDownloadOne={downloadOne}
+            onStartBatch={startBatch}
+            onCancelBatch={cancelBatch}
+            onDownloadAllZip={downloadAllZip}
             onClearAll={handleClearAll}
           />
         </div>
@@ -625,7 +333,7 @@ export default function App() {
 
           {selectedItem ? (
             <>
-              <BeforeAfterViewer item={selectedItem} onDownload={handleDownloadOne} />
+              <BeforeAfterViewer item={selectedItem} onDownload={downloadOne} />
 
               <InspectorPanel
                 item={selectedItem}
@@ -634,7 +342,7 @@ export default function App() {
                 onUpdateSettings={handleUpdateSettings}
                 onApplyPreset={handleApplyPreset}
                 onApplyToAllSimilar={handleApplyToAllSimilar}
-                onCompressSingle={handleCompressSingle}
+                onCompressSingle={compressSingle}
               />
             </>
           ) : (

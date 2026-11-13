@@ -48,6 +48,8 @@ export async function generateSampleMediaFiles(): Promise<File[]> {
       files.push(new File([pngBlob], 'studio_calibration_frame.png', { type: 'image/png' }));
     }
   }
+  imgCanvas.width = 0;
+  imgCanvas.height = 0;
 
   // 2. Synthesized Stereo Harmonic WAV (2.5 seconds, 44.1kHz)
   const sampleRate = 44100;
@@ -86,8 +88,9 @@ export async function generateSampleMediaFiles(): Promise<File[]> {
 
   // 3. Short animated Canvas WebM video (1.2 seconds) if MediaRecorder is available
   if (typeof MediaRecorder !== 'undefined' && typeof HTMLCanvasElement !== 'undefined') {
+    const vidCanvas = document.createElement('canvas');
+    let stream: MediaStream | null = null;
     try {
-      const vidCanvas = document.createElement('canvas');
       vidCanvas.width = 640;
       vidCanvas.height = 360;
       const vctx = vidCanvas.getContext('2d');
@@ -95,7 +98,7 @@ export async function generateSampleMediaFiles(): Promise<File[]> {
         MediaRecorder.isTypeSupported(m)
       );
       if (vctx && mime) {
-        const stream = vidCanvas.captureStream(24);
+        stream = vidCanvas.captureStream(24);
         const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 1_500_000 });
         const chunks: Blob[] = [];
         rec.ondataavailable = (e) => {
@@ -125,6 +128,18 @@ export async function generateSampleMediaFiles(): Promise<File[]> {
       }
     } catch {
       // Skip video sample if headless environment restricts MediaRecorder
+    } finally {
+      if (stream) {
+        stream.getTracks().forEach((t) => {
+          try {
+            t.stop();
+          } catch {
+            // ignore
+          }
+        });
+      }
+      vidCanvas.width = 0;
+      vidCanvas.height = 0;
     }
   }
 

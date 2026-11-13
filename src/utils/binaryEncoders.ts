@@ -1,16 +1,40 @@
 /**
  * Pure TypeScript binary encoders for BMP, WAV (PCM 16-bit), and GIF89a
- * so offline browser processing never fails due to missing native canvas/Audio mime support.
+ * with strict input validation so offline browser processing never produces
+ * malformed binary headers or buffer overruns.
  */
 
+const MAX_BMP_DIMENSION = 16384;
+const MAX_GIF_DIMENSION = 65535;
+const MIN_SAMPLE_RATE = 8000;
+const MAX_SAMPLE_RATE = 384000;
+
 export function encodeRgbaToBmp(
-  rgba: Uint8ClampedArray,
+  rgba: Uint8ClampedArray | Uint8Array,
   width: number,
   height: number
 ): Uint8Array {
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
+    throw new RangeError(`Invalid BMP dimensions: ${width}x${height}. Dimensions must be positive integers.`);
+  }
+  if (width > MAX_BMP_DIMENSION || height > MAX_BMP_DIMENSION) {
+    throw new RangeError(
+      `BMP dimensions ${width}x${height} exceed maximum supported size (${MAX_BMP_DIMENSION}x${MAX_BMP_DIMENSION}).`
+    );
+  }
+  if (!rgba || rgba.length !== width * height * 4) {
+    throw new RangeError(
+      `Invalid RGBA buffer length for BMP: expected ${width * height * 4} bytes, received ${rgba?.length ?? 0}.`
+    );
+  }
+
   const rowStride = Math.ceil((width * 3) / 4) * 4;
   const pixelArraySize = rowStride * height;
   const fileSize = 54 + pixelArraySize;
+  if (!Number.isSafeInteger(fileSize) || fileSize > 0x7fffffff) {
+    throw new RangeError(`BMP output size (${fileSize} bytes) exceeds safe buffer limits.`);
+  }
+
   const buffer = new ArrayBuffer(fileSize);
   const view = new DataView(buffer);
   const out = new Uint8Array(buffer);
@@ -55,12 +79,42 @@ export function encodeFloatChannelsToWav(
   channels: Float32Array[],
   sampleRate: number
 ): Uint8Array {
-  const numChannels = Math.max(1, channels.length);
-  const length = channels[0]?.length || 0;
+  if (!Array.isArray(channels) || channels.length === 0 || channels.length > 8) {
+    throw new RangeError(
+      `Invalid WAV channel count (${channels?.length ?? 0}). Must provide between 1 and 8 audio channels.`
+    );
+  }
+  if (
+    !Number.isInteger(sampleRate) ||
+    sampleRate < MIN_SAMPLE_RATE ||
+    sampleRate > MAX_SAMPLE_RATE
+  ) {
+    throw new RangeError(
+      `Invalid WAV sampleRate (${sampleRate}). Expected integer between ${MIN_SAMPLE_RATE} and ${MAX_SAMPLE_RATE} Hz.`
+    );
+  }
+
+  const numChannels = channels.length;
+  const length = channels[0]?.length ?? 0;
+  for (let ch = 0; ch < numChannels; ch++) {
+    if (!(channels[ch] instanceof Float32Array)) {
+      throw new TypeError(`WAV channel ${ch} must be a Float32Array.`);
+    }
+    if (channels[ch].length !== length) {
+      throw new RangeError(
+        `WAV channel ${ch} length (${channels[ch].length}) does not match channel 0 length (${length}).`
+      );
+    }
+  }
+
   const bytesPerSample = 2;
   const blockAlign = numChannels * bytesPerSample;
   const byteRate = sampleRate * blockAlign;
   const dataSize = length * blockAlign;
+  if (!Number.isSafeInteger(44 + dataSize) || 44 + dataSize > 0x7fffffff) {
+    throw new RangeError(`WAV data size (${dataSize} bytes) exceeds 32-bit RIFF container limit.`);
+  }
+
   const buffer = new ArrayBuffer(44 + dataSize);
   const view = new DataView(buffer);
 
@@ -87,8 +141,11 @@ export function encodeFloatChannelsToWav(
   let offset = 44;
   for (let i = 0; i < length; i++) {
     for (let ch = 0; ch < numChannels; ch++) {
-      const sample = Math.max(-1, Math.min(1, channels[ch][i] || 0));
-      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+      const raw = channels[ch][i];
+      const finiteSample = Number.isFinite(raw) ? raw : 0;
+      const sample = Math.max(-1, Math.min(1, finiteSample));
+      const pcm16 = sample < 0 ? Math.round(sample * 0x8000) : Math.round(sample * 0x7fff);
+      view.setInt16(offset, Math.max(-32768, Math.min(32767, pcm16)), true);
       offset += 2;
     }
   }
@@ -101,11 +158,36 @@ export function encodeFloatChannelsToWav(
  * and standard LZW variable-bit-width compression. Used as offline fallback when FFmpeg WASM is unavailable.
  */
 export function encodeFramesToGif(
-  frames: Uint8ClampedArray[],
+  frames: (Uint8ClampedArray | Uint8Array)[],
   width: number,
   height: number,
   delayMs: number
 ): Uint8Array {
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
+    throw new RangeError(`Invalid GIF dimensions: ${width}x${height}. Dimensions must be positive integers.`);
+  }
+  if (width > MAX_GIF_DIMENSION || height > MAX_GIF_DIMENSION) {
+    throw new RangeError(
+      `GIF dimensions ${width}x${height} exceed GIF89a 16-bit limit (${MAX_GIF_DIMENSION}x${MAX_GIF_DIMENSION}).`
+    );
+  }
+  if (!Array.isArray(frames) || frames.length === 0) {
+    throw new RangeError('GIF encoding requires at least 1 RGBA frame.');
+  }
+  if (!Number.isFinite(delayMs) || delayMs < 0) {
+    throw new RangeError(`Invalid GIF frame delay (${delayMs}ms).`);
+  }
+
+  const expectedFrameBytes = width * height * 4;
+  for (let idx = 0; idx < frames.length; idx++) {
+    const frame = frames[idx];
+    if (!frame || frame.length !== expectedFrameBytes) {
+      throw new RangeError(
+        `Invalid RGBA buffer for GIF frame ${idx}: expected ${expectedFrameBytes} bytes, received ${frame?.length ?? 0}.`
+      );
+    }
+  }
+
   const bytes: number[] = [];
   const writeStr = (s: string) => {
     for (let i = 0; i < s.length; i++) bytes.push(s.charCodeAt(i));
@@ -159,7 +241,7 @@ export function encodeFramesToGif(
   writeU16(0); // infinite loop
   bytes.push(0x00);
 
-  const delayCentiseconds = Math.max(2, Math.round(delayMs / 10));
+  const delayCentiseconds = Math.max(2, Math.min(65535, Math.round(delayMs / 10)));
 
   for (const rgba of frames) {
     // Graphic Control Extension

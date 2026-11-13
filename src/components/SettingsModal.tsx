@@ -48,7 +48,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setTesting(true);
     setTestResult(null);
     const result = await testLocalBridgeConnection({
-      url: draftUrl.trim() || 'http://127.0.0.1:8000',
+      url: draftUrl.trim() || 'http://localhost:3001',
       timeoutMs: 5000,
       presetName: draftPreset,
       apiKey: draftApiKey.trim() || undefined,
@@ -60,7 +60,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSave(draftMode, {
-      url: draftUrl.trim() || 'http://127.0.0.1:8000',
+      url: draftUrl.trim() || 'http://localhost:3001',
       timeoutMs: 120000,
       presetName: draftPreset.trim() || 'medium',
       apiKey: draftApiKey.trim() || undefined,
@@ -229,7 +229,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 type="url"
                 value={draftUrl}
                 onChange={(e) => setDraftUrl(e.target.value)}
-                placeholder="http://127.0.0.1:8000"
+                placeholder="http://localhost:3001"
                 className="flex-1 px-3 py-2 text-xs font-mono rounded-lg border border-zinc-300 dark:border-white/10 bg-zinc-50 dark:bg-[#09090b] text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-cyan-500"
               />
               <button

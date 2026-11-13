@@ -32,15 +32,28 @@ export async function transcodeAudioNativeFallback(
   signal?: AbortSignal
 ): Promise<NativeTranscodeResult> {
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+  if (!file || file.size <= 0) {
+    throw new Error(`Audio file "${file?.name || 'unknown'}" is empty or invalid.`);
+  }
+
   onLog?.('[Native Fallback] Decoding media with Web Audio API (AudioContext)...');
   onProgress?.(15);
 
-  const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-  if (!AudioCtx) {
+  const AudioCtx =
+    typeof window !== 'undefined'
+      ? window.AudioContext ||
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+      : undefined;
+  if (!AudioCtx || typeof OfflineAudioContext === 'undefined') {
     throw new Error('Web Audio API is unavailable in this browser.');
   }
 
   const arrayBuffer = await file.arrayBuffer();
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+  if (arrayBuffer.byteLength === 0) {
+    throw new Error(`Audio file "${file.name}" contains 0 bytes.`);
+  }
+
   const ctx = new AudioCtx();
   let decoded: AudioBuffer;
   try {
@@ -53,17 +66,27 @@ export async function transcodeAudioNativeFallback(
   onProgress?.(45);
 
   const duration = decoded.duration;
-  const startSec = Math.max(0, parseTimestampToSeconds(settings.trimStart) ?? 0);
+  if (!Number.isFinite(duration) || duration <= 0) {
+    throw new Error(`Audio track in "${file.name}" has zero or invalid duration.`);
+  }
+
+  const startSec = Math.max(0, Math.min(duration, parseTimestampToSeconds(settings.trimStart) ?? 0));
   const rawEnd = parseTimestampToSeconds(settings.trimEnd);
   const endSec = rawEnd !== null && rawEnd > startSec ? Math.min(duration, rawEnd) : duration;
   const clipDuration = Math.max(0.05, endSec - startSec);
 
-  const targetChannels = settings.channels === 'mono' ? 1 : Math.min(2, decoded.numberOfChannels || 2);
-  const targetSampleRate = settings.sampleRate || 44100;
+  const targetChannels =
+    settings.channels === 'mono' ? 1 : Math.max(1, Math.min(2, decoded.numberOfChannels || 2));
+  const targetSampleRate =
+    Number.isInteger(settings.sampleRate) && settings.sampleRate >= 8000
+      ? settings.sampleRate
+      : 44100;
   const frameCount = Math.max(1, Math.round(clipDuration * targetSampleRate));
 
   onLog?.(
-    `[Native Fallback] Rendering ${clipDuration.toFixed(2)}s @ ${targetSampleRate}Hz (${targetChannels === 1 ? 'Mono' : 'Stereo'})...`
+    `[Native Fallback] Rendering ${clipDuration.toFixed(2)}s @ ${targetSampleRate}Hz (${
+      targetChannels === 1 ? 'Mono' : 'Stereo'
+    })...`
   );
 
   const offline = new OfflineAudioContext(targetChannels, frameCount, targetSampleRate);
@@ -72,7 +95,17 @@ export async function transcodeAudioNativeFallback(
   source.connect(offline.destination);
   source.start(0, startSec, clipDuration);
 
-  const rendered = await offline.startRendering();
+  let rendered: AudioBuffer;
+  try {
+    rendered = await offline.startRendering();
+  } finally {
+    try {
+      source.disconnect();
+    } catch {
+      // ignore disconnect errors
+    }
+  }
+
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
   onProgress?.(80);
 
@@ -83,17 +116,24 @@ export async function transcodeAudioNativeFallback(
 
   const wavBytes = encodeFloatChannelsToWav(channelsData, targetSampleRate);
   const blob = new Blob([wavBytes.buffer as ArrayBuffer], { type: 'audio/wav' });
-  const actualFormat = settings.format === 'wav' ? 'wav' : 'wav';
+  const actualFormat = 'wav';
+  const requestedFormat = settings.format.toLowerCase();
   onProgress?.(100);
+
+  const formatChanged = requestedFormat !== 'wav';
+  const notice = formatChanged
+    ? `FFmpeg WASM unavailable; output was encoded as 16-bit PCM WAV (.wav) instead of requested ${requestedFormat.toUpperCase()} via Web Audio API fallback.`
+    : 'Encoded natively as 16-bit PCM WAV (.wav) via Web Audio API.';
+
+  if (formatChanged) {
+    onLog?.(`[Native Fallback] Notice: ${notice}`);
+  }
 
   return {
     blob,
     filename: buildOutputFilename(file.name, actualFormat),
     actualFormat,
-    notice:
-      settings.format === 'wav'
-        ? 'Encoded natively via Web Audio PCM.'
-        : `FFmpeg WASM unavailable; encoded cleanly as WAV PCM via Web Audio API fallback.`,
+    notice,
   };
 }
 
@@ -115,6 +155,9 @@ export async function transcodeVideoNativeFallback(
   }
 
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+  if (!file || file.size <= 0) {
+    throw new Error(`Video file "${file?.name || 'unknown'}" is empty or invalid.`);
+  }
   onLog?.('[Native Fallback] Using Canvas + MediaRecorder browser pipeline...');
 
   const url = URL.createObjectURL(file);
@@ -122,26 +165,65 @@ export async function transcodeVideoNativeFallback(
   video.muted = true;
   video.playsInline = true;
   video.preload = 'auto';
-  video.src = url;
+
+  let canvas: HTMLCanvasElement | null = null;
+  let stream: MediaStream | null = null;
+  let recorder: MediaRecorder | null = null;
+  let rafId = 0;
+  let metadataTimer: ReturnType<typeof setTimeout> | null = null;
+  let seekTimer: ReturnType<typeof setTimeout> | null = null;
+  let endSafetyTimer: ReturnType<typeof setTimeout> | null = null;
+  let onAbortHandler: (() => void) | null = null;
 
   try {
     await new Promise<void>((resolve, reject) => {
-      video.onloadedmetadata = () => resolve();
-      video.onerror = () => reject(new Error(`Unable to decode video "${file.name}".`));
+      const cleanupMetaListeners = () => {
+        if (metadataTimer !== null) {
+          clearTimeout(metadataTimer);
+          metadataTimer = null;
+        }
+        video.removeEventListener('loadedmetadata', onLoadedMeta);
+        video.removeEventListener('error', onErrorMeta);
+        signal?.removeEventListener('abort', onMetaAbort);
+      };
+      const onLoadedMeta = () => {
+        cleanupMetaListeners();
+        resolve();
+      };
+      const onErrorMeta = () => {
+        cleanupMetaListeners();
+        reject(new Error(`Unable to decode video "${file.name}".`));
+      };
+      const onMetaAbort = () => {
+        cleanupMetaListeners();
+        reject(new DOMException('Aborted', 'AbortError'));
+      };
+
+      metadataTimer = setTimeout(() => {
+        cleanupMetaListeners();
+        reject(new Error(`Timed out reading video metadata for "${file.name}".`));
+      }, 15000);
+
+      video.addEventListener('loadedmetadata', onLoadedMeta, { once: true });
+      video.addEventListener('error', onErrorMeta, { once: true });
+      signal?.addEventListener('abort', onMetaAbort, { once: true });
+      video.src = url;
     });
+
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
     const origW = video.videoWidth || 640;
     const origH = video.videoHeight || 360;
     const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 3;
 
     if (settings.format === 'gif') {
-      const targetW = Math.min(origW, Math.max(120, settings.gifWidth || 480));
+      const targetW = Math.min(origW, Math.max(120, Math.min(1280, settings.gifWidth || 480)));
       const targetH = Math.max(2, Math.round((origH / origW) * targetW));
-      const fps = settings.fps === 'original' ? 12 : Math.min(20, settings.fps);
+      const fps = settings.fps === 'original' ? 12 : Math.max(1, Math.min(20, Number(settings.fps) || 12));
       const maxDuration = Math.min(duration, 10);
       const totalFrames = Math.max(2, Math.min(90, Math.floor(maxDuration * fps)));
 
-      const canvas = document.createElement('canvas');
+      canvas = document.createElement('canvas');
       canvas.width = targetW;
       canvas.height = targetH;
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -151,15 +233,32 @@ export async function transcodeVideoNativeFallback(
       for (let i = 0; i < totalFrames; i++) {
         if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
         const t = (i / totalFrames) * maxDuration;
-        video.currentTime = t;
-        await new Promise<void>((resolve) => {
-          const onSeeked = () => {
+        await new Promise<void>((resolve, reject) => {
+          const cleanupSeek = () => {
+            if (seekTimer !== null) {
+              clearTimeout(seekTimer);
+              seekTimer = null;
+            }
             video.removeEventListener('seeked', onSeeked);
+            signal?.removeEventListener('abort', onSeekAbort);
+          };
+          const onSeeked = () => {
+            cleanupSeek();
             resolve();
           };
+          const onSeekAbort = () => {
+            cleanupSeek();
+            reject(new DOMException('Aborted', 'AbortError'));
+          };
+          seekTimer = setTimeout(() => {
+            cleanupSeek();
+            resolve();
+          }, 300);
           video.addEventListener('seeked', onSeeked, { once: true });
-          setTimeout(resolve, 250);
+          signal?.addEventListener('abort', onSeekAbort, { once: true });
+          video.currentTime = t;
         });
+
         ctx.drawImage(video, 0, 0, targetW, targetH);
         frames.push(ctx.getImageData(0, 0, targetW, targetH).data);
         onProgress?.(Math.min(85, Math.round(((i + 1) / totalFrames) * 85)));
@@ -179,6 +278,10 @@ export async function transcodeVideoNativeFallback(
     }
 
     // Video MediaRecorder fallback
+    if (typeof MediaRecorder === 'undefined') {
+      throw new Error('MediaRecorder API is unavailable in this browser.');
+    }
+
     const maxH = getTargetVideoMaxHeight(settings.resolution);
     let targetW = origW;
     let targetH = origH;
@@ -188,24 +291,24 @@ export async function transcodeVideoNativeFallback(
       targetH = Math.max(2, Math.round((origH * ratio) / 2) * 2);
     }
 
-    const fps = settings.fps === 'original' ? 30 : settings.fps;
-    const canvas = document.createElement('canvas');
+    const fps = settings.fps === 'original' ? 30 : Math.max(1, Math.min(60, Number(settings.fps) || 30));
+    canvas = document.createElement('canvas');
     canvas.width = targetW;
     canvas.height = targetH;
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Canvas 2D unavailable.');
 
     const mimeCandidates =
-      settings.format === 'mp4'
+      settings.format === 'mp4' || settings.format === 'mov' || settings.format === 'mkv'
         ? ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm']
         : ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
 
     const chosenMime =
-      mimeCandidates.find((m) => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(m)) ||
-      'video/webm';
+      mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) || 'video/webm';
     const outExt = chosenMime.includes('mp4') ? 'mp4' : 'webm';
+    const cleanMime = chosenMime.split(';')[0] || 'video/webm';
 
-    const stream = canvas.captureStream(fps);
+    stream = canvas.captureStream(fps);
     const crfBitrateMap =
       settings.crf <= 18
         ? 4_000_000
@@ -215,7 +318,7 @@ export async function transcodeVideoNativeFallback(
         ? 1_200_000
         : 650_000;
 
-    const recorder = new MediaRecorder(stream, {
+    recorder = new MediaRecorder(stream, {
       mimeType: chosenMime,
       videoBitsPerSecond: crfBitrateMap,
     });
@@ -225,16 +328,16 @@ export async function transcodeVideoNativeFallback(
       if (e.data && e.data.size > 0) chunks.push(e.data);
     };
 
+    const activeRecorder = recorder;
     const donePromise = new Promise<Blob>((resolve, reject) => {
-      recorder.onstop = () => resolve(new Blob(chunks, { type: chosenMime.split(';')[0] }));
-      recorder.onerror = () => reject(new Error('MediaRecorder transcoding failed.'));
+      activeRecorder.onstop = () => resolve(new Blob(chunks, { type: cleanMime }));
+      activeRecorder.onerror = () => reject(new Error('MediaRecorder transcoding failed.'));
     });
 
     onLog?.(`[Native Fallback] Recording ${targetW}x${targetH} @ ${fps}fps (${chosenMime})...`);
     recorder.start(200);
     video.currentTime = 0;
 
-    let rafId = 0;
     let stopped = false;
 
     const drawLoop = () => {
@@ -247,21 +350,63 @@ export async function transcodeVideoNativeFallback(
       }
     };
 
-    const onAbort = () => {
-      stopped = true;
-      cancelAnimationFrame(rafId);
-      video.pause();
-      if (recorder.state !== 'inactive') recorder.stop();
-    };
-    signal?.addEventListener('abort', onAbort, { once: true });
+    await new Promise<void>((resolve, reject) => {
+      const cleanupPlay = () => {
+        if (endSafetyTimer !== null) {
+          clearTimeout(endSafetyTimer);
+          endSafetyTimer = null;
+        }
+        video.removeEventListener('ended', onEnded);
+        video.removeEventListener('error', onPlayError);
+        if (onAbortHandler) {
+          signal?.removeEventListener('abort', onAbortHandler);
+          onAbortHandler = null;
+        }
+      };
 
-    await video.play();
-    drawLoop();
+      const onEnded = () => {
+        cleanupPlay();
+        resolve();
+      };
 
-    await new Promise<void>((resolve) => {
-      video.onended = () => resolve();
-      // Safety cap if duration metadata is odd
-      setTimeout(resolve, Math.min(120_000, (duration + 2) * 1000));
+      const onPlayError = () => {
+        cleanupPlay();
+        reject(new Error(`Playback error while transcoding "${file.name}".`));
+      };
+
+      onAbortHandler = () => {
+        stopped = true;
+        cancelAnimationFrame(rafId);
+        video.pause();
+        if (activeRecorder.state !== 'inactive') {
+          try {
+            activeRecorder.stop();
+          } catch {
+            // ignore
+          }
+        }
+        cleanupPlay();
+        reject(new DOMException('Aborted', 'AbortError'));
+      };
+
+      signal?.addEventListener('abort', onAbortHandler, { once: true });
+      video.addEventListener('ended', onEnded, { once: true });
+      video.addEventListener('error', onPlayError, { once: true });
+
+      endSafetyTimer = setTimeout(() => {
+        cleanupPlay();
+        resolve();
+      }, Math.min(120_000, Math.round((duration + 2) * 1000)));
+
+      video
+        .play()
+        .then(() => {
+          drawLoop();
+        })
+        .catch((err) => {
+          cleanupPlay();
+          reject(err instanceof Error ? err : new Error(String(err)));
+        });
     });
 
     stopped = true;
@@ -269,21 +414,71 @@ export async function transcodeVideoNativeFallback(
     if (recorder.state !== 'inactive') {
       recorder.stop();
     }
-    signal?.removeEventListener('abort', onAbort);
 
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     const blob = await donePromise;
     onProgress?.(100);
 
+    const requestedContainer = settings.format.toLowerCase();
+    const containerChanged = requestedContainer !== outExt;
+    const notice = containerChanged
+      ? `FFmpeg WASM unavailable; output was encoded as ${outExt.toUpperCase()} (.${outExt}) instead of requested ${requestedContainer.toUpperCase()} via browser MediaRecorder fallback.`
+      : `FFmpeg WASM unavailable; transcoded natively as ${outExt.toUpperCase()} (.${outExt}) via browser MediaRecorder.`;
+
+    if (containerChanged) {
+      onLog?.(`[Native Fallback] Notice: ${notice}`);
+    }
+
     return {
       blob,
       filename: buildOutputFilename(file.name, outExt),
       actualFormat: outExt,
-      notice: `FFmpeg WASM unavailable; transcoded natively via MediaRecorder (${outExt.toUpperCase()}).`,
+      notice,
     };
   } finally {
-    video.pause();
-    video.removeAttribute('src');
-    URL.revokeObjectURL(url);
+    if (metadataTimer !== null) clearTimeout(metadataTimer);
+    if (seekTimer !== null) clearTimeout(seekTimer);
+    if (endSafetyTimer !== null) clearTimeout(endSafetyTimer);
+    if (rafId) cancelAnimationFrame(rafId);
+    if (onAbortHandler) {
+      signal?.removeEventListener('abort', onAbortHandler);
+    }
+    if (recorder) {
+      if (recorder.state !== 'inactive') {
+        try {
+          recorder.stop();
+        } catch {
+          // ignore
+        }
+      }
+      recorder.ondataavailable = null;
+      recorder.onstop = null;
+      recorder.onerror = null;
+    }
+    if (stream) {
+      stream.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch {
+          // ignore
+        }
+      });
+    }
+    try {
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+    } catch {
+      // ignore
+    }
+    if (canvas) {
+      canvas.width = 0;
+      canvas.height = 0;
+    }
+    try {
+      URL.revokeObjectURL(url);
+    } catch {
+      // ignore
+    }
   }
 }

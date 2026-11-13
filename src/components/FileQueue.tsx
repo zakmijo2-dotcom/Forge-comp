@@ -96,7 +96,7 @@ export const FileQueue: React.FC<FileQueueProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {items.length > 0 && !isBatchRunning && (
+          {items.length > 0 && (
             <button
               type="button"
               onClick={onClearAll}
@@ -288,10 +288,9 @@ export const FileQueue: React.FC<FileQueueProps> = ({
                   <button
                     type="button"
                     onClick={() => onRemove(item.id)}
-                    disabled={item.status === 'processing'}
                     aria-label={`Remove ${item.name} from queue`}
                     title="Remove file"
-                    className="p-2 rounded-md text-zinc-400 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-white/[0.06] disabled:opacity-30 transition-colors cursor-pointer"
+                    className="p-2 rounded-md text-zinc-400 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-white/[0.06] transition-colors cursor-pointer"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>

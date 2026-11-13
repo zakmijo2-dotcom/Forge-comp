@@ -16,40 +16,65 @@ export const BeforeAfterViewer: React.FC<BeforeAfterViewerProps> = ({ item, onDo
   const [livePreviewSize, setLivePreviewSize] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const isDraggingRef = useRef(false);
+  const ownedPreviewUrlRef = useRef<string | null>(null);
+
+  const revokeOwnedPreviewUrl = () => {
+    if (ownedPreviewUrlRef.current) {
+      const toRevoke = ownedPreviewUrlRef.current;
+      ownedPreviewUrlRef.current = null;
+      try {
+        URL.revokeObjectURL(toRevoke);
+      } catch {
+        // ignore
+      }
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      revokeOwnedPreviewUrl();
+    };
+  }, []);
 
   useEffect(() => {
     if (item.kind !== 'image') {
+      revokeOwnedPreviewUrl();
       setLivePreviewUrl(null);
       setLivePreviewSize(null);
       return;
     }
 
     if (item.status === 'completed' && item.outputUrl) {
+      revokeOwnedPreviewUrl();
       setLivePreviewUrl(item.outputUrl);
       setLivePreviewSize(item.outputSize ?? null);
       return;
     }
 
-    let cancelled = false;
-    let createdUrl: string | null = null;
+    const controller = new AbortController();
     const timer = setTimeout(async () => {
       try {
-        const res = await processImageFile(item.file, item.settings.image);
-        if (cancelled) return;
-        createdUrl = URL.createObjectURL(res.blob);
-        setLivePreviewUrl(createdUrl);
+        const res = await processImageFile(
+          item.file,
+          item.settings.image,
+          undefined,
+          undefined,
+          controller.signal
+        );
+        if (controller.signal.aborted) return;
+        const nextUrl = URL.createObjectURL(res.blob);
+        revokeOwnedPreviewUrl();
+        ownedPreviewUrlRef.current = nextUrl;
+        setLivePreviewUrl(nextUrl);
         setLivePreviewSize(res.blob.size);
       } catch {
-        // ignore live preview error
+        // ignore live preview error or abort
       }
     }, 180);
 
     return () => {
-      cancelled = true;
+      controller.abort();
       clearTimeout(timer);
-      if (createdUrl) {
-        URL.revokeObjectURL(createdUrl);
-      }
     };
   }, [item.id, item.kind, item.file, item.status, item.outputUrl, item.outputSize, item.settings.image]);
 

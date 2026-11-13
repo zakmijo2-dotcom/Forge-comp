@@ -20,6 +20,25 @@ export default defineConfig(() => {
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      // Proxy Local FFmpeg API Bridge endpoints during local development
+      proxy: {
+        '/api': {
+          target: 'http://localhost:3001',
+          changeOrigin: true,
+        },
+        '/health': {
+          target: 'http://localhost:3001',
+          changeOrigin: true,
+        },
+      },
+      // Optional Cross-Origin Isolation headers for multi-threaded SharedArrayBuffer WASM:
+      // MediaForge Local uses single-threaded @ffmpeg/core by default so it works in
+      // standard iframe previews without COOP/COEP restrictions. Uncomment below if
+      // deploying standalone with multi-threaded @ffmpeg/core-mt:
+      // headers: {
+      //   'Cross-Origin-Opener-Policy': 'same-origin',
+      //   'Cross-Origin-Embedder-Policy': 'require-corp',
+      // },
     },
   };
 });

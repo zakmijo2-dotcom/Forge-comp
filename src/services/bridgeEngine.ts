@@ -3,23 +3,25 @@ import { buildOutputFilename } from '../utils/mediaUtils';
 
 export interface BridgeHealthResult {
   ok: boolean;
+  ffmpegAvailable?: boolean;
   message: string;
   latencyMs?: number;
 }
 
 export async function testLocalBridgeConnection(config: BridgeConfig): Promise<BridgeHealthResult> {
-  const baseUrl = config.url.replace(/\/+$/, '');
+  const baseUrl = (config.url || 'http://localhost:3001').trim().replace(/\/+$/, '');
   const started = performance.now();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Math.min(5000, config.timeoutMs || 5000));
+
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), Math.min(5000, config.timeoutMs || 5000));
     const res = await fetch(`${baseUrl}/health`, {
       method: 'GET',
       headers: config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : undefined,
       signal: controller.signal,
     });
-    clearTimeout(timer);
     const latencyMs = Math.round(performance.now() - started);
+
     if (!res.ok) {
       return {
         ok: false,
@@ -27,9 +29,27 @@ export async function testLocalBridgeConnection(config: BridgeConfig): Promise<B
         latencyMs,
       };
     }
+
+    let payload: { status?: string; ffmpegAvailable?: boolean } = {};
+    try {
+      payload = (await res.json()) as { status?: string; ffmpegAvailable?: boolean };
+    } catch {
+      // Allow plain-text 200 OK health responses from custom bridges
+    }
+
+    if (payload.ffmpegAvailable === false) {
+      return {
+        ok: false,
+        ffmpegAvailable: false,
+        message: `Bridge server is reachable (${latencyMs}ms), but system FFmpeg is not installed or not in PATH.`,
+        latencyMs,
+      };
+    }
+
     return {
       ok: true,
-      message: `Connected to Local FFmpeg Bridge (${latencyMs}ms).`,
+      ffmpegAvailable: payload.ffmpegAvailable ?? true,
+      message: `Connected to Local FFmpeg Bridge (${latencyMs}ms · FFmpeg ready).`,
       latencyMs,
     };
   } catch (err) {
@@ -37,9 +57,11 @@ export async function testLocalBridgeConnection(config: BridgeConfig): Promise<B
       ok: false,
       message:
         err instanceof Error
-          ? `Unreachable: ${err.message}. Ensure your local Termux/Desktop bridge server is running with CORS enabled.`
+          ? `Unreachable: ${err.message}. Start the local bridge with "npm run server" (port 3001).`
           : 'Unable to reach local bridge endpoint.',
     };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -108,7 +130,14 @@ export async function processViaLocalBridge(params: {
   signal?: AbortSignal;
 }): Promise<{ blob: Blob; filename: string }> {
   const { file, kind, settings, bridgeConfig, onProgress, onLog, signal } = params;
-  const baseUrl = bridgeConfig.url.replace(/\/+$/, '');
+  if (signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError');
+  }
+  if (!file || file.size <= 0) {
+    throw new Error(`Input file "${file?.name || 'unknown'}" is empty or invalid.`);
+  }
+
+  const baseUrl = (bridgeConfig.url || 'http://localhost:3001').trim().replace(/\/+$/, '');
   const endpoint = `${baseUrl}/api/convert`;
   const payload = buildBridgeParamsPayload(kind, settings, bridgeConfig.presetName);
 
@@ -120,31 +149,78 @@ export async function processViaLocalBridge(params: {
   formData.append('file', file);
   formData.append('params', JSON.stringify(payload));
 
-  const res = await fetch(endpoint, {
-    method: 'POST',
-    body: formData,
-    headers: bridgeConfig.apiKey
-      ? { Authorization: `Bearer ${bridgeConfig.apiKey}` }
-      : undefined,
-    signal,
-  });
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeoutMs = Math.max(5000, bridgeConfig.timeoutMs || 120000);
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
 
-  if (!res.ok) {
-    const errText = await res.text().catch(() => res.statusText);
-    throw new Error(`Local Bridge HTTP ${res.status}: ${errText || 'Conversion failed'}`);
+  const onCallerAbort = () => controller.abort();
+  signal?.addEventListener('abort', onCallerAbort, { once: true });
+
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      body: formData,
+      headers: bridgeConfig.apiKey
+        ? { Authorization: `Bearer ${bridgeConfig.apiKey}` }
+        : undefined,
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      let errMessage = res.statusText;
+      try {
+        const errBody = await res.text();
+        if (errBody) {
+          try {
+            const parsed = JSON.parse(errBody) as { error?: string; message?: string };
+            errMessage = parsed.error || parsed.message || errBody;
+          } catch {
+            errMessage = errBody;
+          }
+        }
+      } catch {
+        // ignore body read error
+      }
+      throw new Error(`Local Bridge HTTP ${res.status}: ${errMessage || 'Conversion failed'}`);
+    }
+
+    onProgress?.(65);
+    const contentType = res.headers.get('Content-Type') || 'application/octet-stream';
+    const rawBlob = await res.blob();
+    if (signal?.aborted) {
+      throw new DOMException('Aborted', 'AbortError');
+    }
+    if (rawBlob.size === 0) {
+      throw new Error('Local Bridge returned an empty (0-byte) output file.');
+    }
+
+    const blob =
+      rawBlob.type && rawBlob.type !== 'application/octet-stream'
+        ? rawBlob
+        : new Blob([rawBlob], { type: contentType });
+
+    const targetExt = String(payload.format || 'bin');
+    const disposition = res.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="?([^";]+)"?/i);
+    const filename = match?.[1] || buildOutputFilename(file.name, targetExt);
+
+    onLog?.(`[Local Bridge] Received ${blob.size} bytes (${contentType}).`);
+    onProgress?.(100);
+    return { blob, filename };
+  } catch (err) {
+    if (signal?.aborted) {
+      throw new DOMException('Aborted', 'AbortError');
+    }
+    if (timedOut) {
+      throw new Error(`Local Bridge request timed out after ${timeoutMs}ms.`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', onCallerAbort);
   }
-
-  onProgress?.(65);
-  const contentType = res.headers.get('Content-Type') || 'application/octet-stream';
-
-  // Support optional streaming NDJSON progress headers if bridge provides them, otherwise read blob
-  const blob = await res.blob();
-  const targetExt = String(payload.format || 'bin');
-  const disposition = res.headers.get('Content-Disposition') || '';
-  const match = disposition.match(/filename="?([^"]+)"?/i);
-  const filename = match?.[1] || buildOutputFilename(file.name, targetExt);
-
-  onLog?.(`[Local Bridge] Received ${blob.size} bytes (${contentType}).`);
-  onProgress?.(100);
-  return { blob, filename };
 }
